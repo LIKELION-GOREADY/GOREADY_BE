@@ -1,1 +1,1 @@
-# LAZYWEATHER_BE
+# 외출준비 GoReady Backend Repository
