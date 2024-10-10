@@ -1,13 +1,13 @@
-package com.example.lazyweather;
+package com.example.goready;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class LazyweatherApplication {
+public class GoReadyApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(LazyweatherApplication.class, args);
+        SpringApplication.run(GoReadyApplication.class, args);
     }
 
 }
