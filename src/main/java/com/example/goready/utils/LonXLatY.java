@@ -1,13 +1,12 @@
 package com.example.goready.utils;
 
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 @Getter
-public class LatXLonY {
-    public double lat;
+public class LonXLatY {
     public double lon;
+    public double lat;
     public double x;
     public double y;
 }

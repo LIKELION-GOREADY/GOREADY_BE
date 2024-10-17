@@ -4,7 +4,7 @@ public class GridUtils {
     public static int TO_GRID = 0;
     public static int TO_GPS = 1;
 
-    public static LatXLonY convertGRID_GPS(int mode, double lat_X, double lon_Y) {
+    public static LonXLatY convertGRID_GPS(int mode, double lon_X, double lat_Y) {
         double RE = 6371.00877; // 지구 반경(km)
         double GRID = 5.0; // 격자 간격(km)
         double SLAT1 = 30.0; // 투영 위도1(degree)
@@ -32,14 +32,14 @@ public class GridUtils {
         sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
         double ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
         ro = re * sf / Math.pow(ro, sn);
-        LatXLonY rs = new LatXLonY();
+        LonXLatY rs = new LonXLatY();
 
         if (mode == TO_GRID) {
-            rs.lat = lat_X;
-            rs.lon = lon_Y;
-            double ra = Math.tan(Math.PI * 0.25 + (lat_X) * DEGRAD * 0.5);
+            rs.lon = lon_X;
+            rs.lat = lat_Y;
+            double ra = Math.tan(Math.PI * 0.25 + (lat_Y) * DEGRAD * 0.5);
             ra = re * sf / Math.pow(ra, sn);
-            double theta = lon_Y * DEGRAD - olon;
+            double theta = lon_X * DEGRAD - olon;
             if (theta > Math.PI)
                 theta -= 2.0 * Math.PI;
             if (theta < -Math.PI)
@@ -50,10 +50,10 @@ public class GridUtils {
         }
 
         else {
-            rs.x = lat_X;
-            rs.y = lon_Y;
-            double xn = lat_X - XO;
-            double yn = ro - lon_Y + YO;
+            rs.x = lon_X;
+            rs.y = lat_Y;
+            double xn = lon_X - XO;
+            double yn = ro - lat_Y + YO;
             double ra = Math.sqrt(xn * xn + yn * yn);
             if (sn < 0.0) {
                 ra = -ra;
