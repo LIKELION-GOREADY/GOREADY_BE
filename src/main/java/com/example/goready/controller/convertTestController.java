@@ -1,7 +1,7 @@
 package com.example.goready.controller;
 
 import com.example.goready.service.weatherApi.WeatherApiService;
-import com.example.goready.utils.LatXLonY;
+import com.example.goready.utils.LonXLatY;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,8 +18,8 @@ public class convertTestController {
     }
 
     @GetMapping("/convert")
-    public LatXLonY convertTest(@RequestParam double lat, @RequestParam double lon) {
-        return weatherApiService.convertTest(lat, lon);
+    public LonXLatY convertTest(@RequestParam double lon, @RequestParam double lat) {
+        return weatherApiService.convertTest(lon, lat);
     }
     // lat: 36.5, lon:127.5 -> x: 69, y: 104 (성공)
 }
