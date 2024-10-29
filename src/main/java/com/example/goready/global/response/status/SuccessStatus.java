@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum SuccessStatus {
 
-    SUCCESS_GET_DUST(HttpStatus.OK, "미세먼지 조회 성공입니다.");
+    SUCCESS_GET_DUST(HttpStatus.OK, "미세먼지 조회 성공입니다."),
+    SUCCESS_GET_WEATHER(HttpStatus.OK, "날씨 조회 성공입니다.");
+
 
     private final HttpStatus httpStatus;
     private final String message;
