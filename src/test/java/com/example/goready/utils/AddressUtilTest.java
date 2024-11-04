@@ -16,7 +16,7 @@ public class AddressUtilTest {
 
     private AddressUtil addressUtil;
 
-    @Value("${kakao.rest-api-key}")
+    @Value("${kakao.rest-weather-key}")
     private String apiKey;
 
     @BeforeEach
