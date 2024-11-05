@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -27,11 +26,10 @@ public class MaskService {
 
     private final AddressUtil addressUtil;
     private final RedisUtil redisUtil;
+    private final WebClient webClient;
 
     @Value("${mask.api-key}")
     private String maskApiKey;
-
-    private final WebClient webClient = WebClient.builder().build();
 
     /**
      * 위도와 경도를 기반으로 마스크 정보를 조회합니다.
@@ -39,19 +37,22 @@ public class MaskService {
      * @param lon 경도
      * @return 마스크 정보 DTO
      */
-    @Async
     public Mono<MaskResponse.MaskDto> getMaskInfo(double lat, double lon) {
-        Address address = addressUtil.getAddress(lat, lon);
-        String redisKey = generateRedisKey(address);
+        // 위도, 경도를 사용하여 주소 정보를 가져옵니다.
+        return addressUtil.getAddress(lat, lon)
+                .flatMap(address -> {
+                    // Redis 키 생성
+                    String redisKey = generateRedisKey(address);
 
-        // Redis에 캐시된 데이터 확인
-        String cachedPm10Value = redisUtil.getValues(redisKey);
-        if (redisUtil.checkExistsValue(cachedPm10Value)) {
-            return Mono.just(createMaskResponseFromCache(cachedPm10Value, address));
-        }
-
-        // 캐시된 데이터가 없는 경우 외부 API에서 데이터 조회
-        return fetchMaskDataFromApi(address, redisKey);
+                    // Redis에 저장된 PM10 데이터가 있는지 확인
+                    String cachedPm10Value = redisUtil.getValues(redisKey);
+                    if (redisUtil.checkExistsValue(cachedPm10Value)) {
+                        // 캐시된 데이터가 있으면 MaskResponse를 생성하여 반환
+                        return Mono.just(createMaskResponseFromCache(cachedPm10Value, address));
+                    }
+                    // 캐시된 데이터가 없으면 API 호출하여 데이터 조회
+                    return fetchMaskDataFromApi(address, redisKey);
+                });
     }
 
     /**
@@ -169,5 +170,5 @@ public class MaskService {
         }
         return 0;
     }
-
 }
+
