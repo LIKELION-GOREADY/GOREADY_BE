@@ -27,10 +27,7 @@ public class WeatherService {
         // 4. 어제와 기온 차
         Integer diffTemp = Math.abs(weatherData.getCurrentTemp() - weatherData.getYesterdayTemp());
 
-        // 5. 주소 정보 조회
-        Address address = addressUtil.getAddress(lat, lon);
-
-        // 6. WeatherResponseDto 생성 및 반환
+        // 5. WeatherResponseDto 생성 및 반환
         return WeatherResponseDto.builder()
                 .status(status)
                 .isUmbrella(isUmbrella)
@@ -39,7 +36,6 @@ public class WeatherService {
                 .currentTemp(weatherData.getCurrentTemp())
                 .diffTemp(diffTemp)
                 .rainPer(weatherData.getRainPer())
-                .address(formatAddress(address))
                 .build();
     }
 
