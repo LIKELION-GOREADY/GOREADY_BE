@@ -15,5 +15,4 @@ public class WeatherResponseDto {
     private int currentTemp; // 현재 기온
     private int diffTemp; // 어제와 기온차
     private int rainPer; // 강수 확률
-    private String address; // 현 주소
 }
