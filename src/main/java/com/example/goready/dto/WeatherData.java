@@ -1,27 +1,18 @@
 package com.example.goready.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.Getter;
+import lombok.*;
 
+@Getter
+@Setter
+@Builder
+@Data
+@AllArgsConstructor
 public class WeatherData {
 
-    @Getter
-    @Builder
-    @Data
-    @AllArgsConstructor
-    public static class RainData{
-        private int maxTemp;
-        private int minTemp;
-        private int rainPer;
-    }
-    @Getter
-    @Builder
-    @Data
-    @AllArgsConstructor
-    public static class TempData {
-        private int currentTemp;
-        private int yesterdayTemp;
-    }
+    private int maxTemp;
+    private int minTemp;
+    private int rainPer;
+    private int currentTemp;
+    private int yesterdayTemp;
+
 }

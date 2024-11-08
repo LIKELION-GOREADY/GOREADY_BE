@@ -1,5 +1,8 @@
 package com.example.goready.utils;
 
+import com.example.goready.global.exception.GlobalException;
+import com.example.goready.global.response.status.ErrorStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -41,4 +44,6 @@ public class RedisUtil {
     public boolean checkExistsValue(String value) {
         return !value.equals("false");
     }
+
+
 }

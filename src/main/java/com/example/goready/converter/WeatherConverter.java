@@ -1,14 +1,14 @@
 package com.example.goready.converter;
 
-import com.example.goready.dto.Address;
-import com.example.goready.dto.WeatherResponse;
+import com.example.goready.dto.WeatherData;
 
 public class WeatherConverter {
-    public static WeatherResponse.RainDto toRainDto(Integer maxTemp, Integer minTemp, Integer rainPer) {
-        return WeatherResponse.RainDto.builder()
+    public static WeatherData toWeatherData(Integer maxTemp, Integer minTemp, Integer rainPer, Integer currnetTemp) {
+        return WeatherData.builder()
                 .maxTemp(maxTemp)
                 .minTemp(minTemp)
                 .rainPer(rainPer)
+                .currentTemp(currnetTemp)
                 .build();
     }
 }

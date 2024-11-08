@@ -1,10 +1,17 @@
 package com.example.goready.utils;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
 public class GridUtils {
     public static int TO_GRID = 0;
     public static int TO_GPS = 1;
 
-    public static LonXLatY convertGRID_GPS(int mode, double lon_X, double lat_Y) {
+    public LonXLatY convertGRID_GPS(int mode, double lon_X, double lat_Y) {
         double RE = 6371.00877; // 지구 반경(km)
         double GRID = 5.0; // 격자 간격(km)
         double SLAT1 = 30.0; // 투영 위도1(degree)

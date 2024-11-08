@@ -18,23 +18,16 @@ public class WeatherService {
 
     public Mono<WeatherResponse.WeatherDto> getWeather(double lon, double lat) {
         // 1. 기상청 API에서 데이터 조회
-        Mono<WeatherResponse.RainDto> rainDto = weatherApiService.getRainInfo(lon, lat);
+        Mono<WeatherData> weatherData = weatherApiService.getWeatherInfo(lon, lat);
 
-        // 2. 기상청 API에서 비동기 방식으로 기온정보 조회
-        Mono<WeatherResponse.TempDto> tempDto = weatherApiService.getTempInfo(lon, lat);
+        // weatherData 가져옴
+        // 어제날씨와 비교 로직
+        // isUmbrella 로직
+
 
         // 3. 여러 비동기 데이터 병합
-        return Mono.zip(rainDto, tempDto)
-                .map(tuple -> {
-                    WeatherResponse.RainDto rain = tuple.getT1();
-                    WeatherResponse.TempDto temp = tuple.getT2();
-
-                    // 4. 두 데이터(rain, temperature)를 WeatherDto에 설정하여 반환
-                    return WeatherResponse.WeatherDto.builder()
-                            .rainDto(rain) // RainDto를 WeatherDto에 포함
-                            .tempDto(temp) // TemperatureDto를 WeatherDto에 포함
-                            .build();
-                });
+        return
+    }
 
         // 3. WeatherDto 반환
 

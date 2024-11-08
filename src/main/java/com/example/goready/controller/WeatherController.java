@@ -1,7 +1,7 @@
 package com.example.goready.controller;
 
 import com.example.goready.dto.MaskResponse;
-import com.example.goready.dto.response.WeatherResponse;
+import com.example.goready.dto.WeatherResponse;
 import com.example.goready.global.response.ApiResponse;
 import com.example.goready.global.response.status.SuccessStatus;
 import com.example.goready.service.weather.WeatherService;
@@ -26,7 +26,7 @@ public class WeatherController {
             @RequestParam(name = "lon") double lon
     ) {
         return weatherService.getWeather(lat, lon)
-                .map(weatherDto -> ApiResponse.success(SuccessStatus.SUCCESS_GET_DUST, weatherDto));
+                .map(weatherDto -> ApiResponse.success(SuccessStatus.SUCCESS_GET_WEATHER, weatherDto));
     }
 
 

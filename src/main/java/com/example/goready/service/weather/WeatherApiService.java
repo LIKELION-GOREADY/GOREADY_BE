@@ -38,56 +38,66 @@ public class WeatherApiService {
     private final GridUtils gridUtils;
 
     /**
-     * 위도와 경도를 기반으로 오늘의 최고, 최저 기온 및 강수 정보를 조회합니다.
+     * 위도와 경도를 기반으로 날씨 정보를 조회합니다.
      * @param lon 경도 - x
      * @param lat 위도 - y
-     * @return 기온 및 강수 정보 DTO
+     * @return 날씨 Data
      */
-    public Mono<WeatherResponse.RainDto> getRainInfo(double lon, double lat) {
+    public Mono<WeatherData> getWeatherInfo(double lon, double lat) {
         // 오늘 날짜 baseDate와 3시간 단위의 baseTime을 결정합니다.
-        String baseDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String baseTime = getTodayBaseTime();
+        String baseDate = getBaseDate();
+        String baseTime = getBaseTime();
+        String yesterDate = getYesterDate();
 
         // 위도, 경도를 사용하여 격좌좌표를 계산합니다.
-        LonXLatY xy = GridUtils.convertGRID_GPS(GridUtils.TO_GRID, lon, lat);
+        LonXLatY xy = gridUtils.convertGRID_GPS(0, lon, lat);
 
-        // Redis 키 생성
-        String redisKey = generateRedisKey(xy, baseDate, baseTime);
+        // Redis 키 생성 - 오늘 날짜 기준
+        String redisKey = generateRedisKey(0, xy);
 
-        // Redis에 저장된 기온 및 강수 데이터(today)가 있는지 확인
-        String cachedRainData = redisUtil.getValues(redisKey);
-        if (redisUtil.checkExistsValue(cachedRainData)) {
-            // 캐시된 데이터가 있으면 WeatherResponse를 생성하여 반환
-            return Mono.just(createRainDtoFromCache(cachedRainData));
+        // Redis 키 생성 - 어제 날짜 기준
+        String yesterdayRedisKey = generateRedisKey(1, xy);
+
+        // Redis에 저장된 WeatherData 가 있는지 확인
+        String cachedWeatherData = redisUtil.getValues(redisKey);
+        String cachedYesterdayData = redisUtil.getValues(yesterdayRedisKey);
+        if (redisUtil.checkExistsValue(cachedWeatherData)) {
+            // 캐시된 데이터가 있으면 WeatherData를 생성하여 반환
+            return Mono.just(createWeatherDtoFromCache(cachedWeatherData));
+        }
+        else if (redisUtil.checkExistsValue(cachedYesterdayData)) {
+            // 어제 날짜의 캐시된 데이터가 있으면 해당 캐시 데이터의 currentTemp를 yesterdayTemp로 가져와 WeatherData 생성
+            Mono<Integer> yesterdayTempMono = getyesterDataFromCache(cachedYesterdayData);
         }
         // 캐시된 데이터가 없으면 API 호출하여 데이터 조회
-        return fetchRainDataFromApi(xy, redisKey, baseDate, baseTime);
+        Mono<Integer> yesterdayTempMono = fetchYesterDataFromApi(xy, yesterDate, baseTime);
+        Mono<WeatherData> weatherDataMono = fetchWeatherDataFromApi(xy, redisKey, baseDate, baseTime);
+        weatherDataMono = yesterdayTempMono.flatMap(y -> {
+            WeatherData weatherData = new WeatherData();
+            weatherData.setYesterdayTemp(y);
+            // 현재 날씨 데이터를 가져오는 부분이 필요 (예: fetchWeatherDataFromApi)
+            return Mono.just(weatherData);  // WeatherData 객체 반환
+        });
+        weatherData.setYesterdayTemp(yesterdayTemp);
+
+        // Redis에 저장
+        setRedis(weatherData, redisKey);
+
+        return Mono.just(weatherData);
     }
 
     /**
-     * 격좌 좌표 xy와 날짜와 현재 시각을 기반으로 Redis 키를 생성합니다.
-     * @param xy 격좌좌표
-     * @param baseDate 오늘 날짜
-     * @param baseTime 3시간 단위의 현재 시각
-     * @return Redis 키 문자열
-     */
-    private String generateRedisKey(LonXLatY xy, String baseDate, String baseTime) {
-        String redisKey = String.format("todayWeather:%f:%f:%s:%s", xy.x, xy.y, baseDate, baseTime);
-        return redisKey;
-    }
-
-    /**
-     * 캐시된 강수 및 기온 데이터를 기반으로 WeatherResponse를 생성합니다.
-     * @param cachedRainData 캐시된 강수 데이터
+     * 캐시된 날씨 데이터를 기반으로 WeatherResponse를 생성합니다.
+     * @param cachedWeatherData 캐시된 오늘 날씨 데이터
      * @return WeatherResponse.RainDto
      */
-    private WeatherResponse.RainDto createRainDtoFromCache(String cachedRainData) {
+    private WeatherData createWeatherDtoFromCache(String cachedWeatherData) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            // JSON 문자열을 RainDto 객체로 변환
-            WeatherResponse.RainDto rainDto = objectMapper.readValue(cachedRainData, WeatherResponse.RainDto.class);
+            // JSON 문자열을 weatherData 객체로 변환
+            WeatherData weatherData = objectMapper.readValue(cachedWeatherData, WeatherData.class);
 
-            return rainDto
+            return weatherData;
         } catch (JsonProcessingException e) {
             e.printStackTrace();
             throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
@@ -96,19 +106,40 @@ public class WeatherApiService {
     }
 
     /**
+     * 캐시된 어제의 데이터로 yesterdayTemp를 생성합니다.
+     * @param cachedYesterdayData 캐시된 어제의 날씨 데이터
+     * @return yesterdayTemp
+     */
+    private Mono<Integer> getyesterDataFromCache(String cachedYesterdayData) {
+        return Mono.just(cachedYesterdayData)
+                .flatMap(data -> {
+                    try {
+                        // JSON 문자열을 JsonNode로 변환하여 yesterdayTemp 필드만 가져오기
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        JsonNode jsonNode = objectMapper.readTree(data);
+                        int yesterdayTemp = jsonNode.get("yesterdayTemp").asInt();  // yesterdayTemp 필드 추출
+                        return Mono.just(yesterdayTemp);  // Mono로 반환
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        return Mono.error(new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR));  // 에러 처리
+                    }
+                });
+    }
+
+    /**
      * 외부 API에서 강수 데이터를 조회하고 Redis에 저장합니다.
      * @param xy 격좌 좌표
      * @param redisKey Redis 키
      * @return WeatherResponse.RainDto
      */
-    public Mono<WeatherResponse.RainDto> fetchRainDataFromApi(LonXLatY xy, String redisKey, String baseDate, String baseTime) {
+    private Mono<WeatherData> fetchWeatherDataFromApi(LonXLatY xy, String redisKey, String baseDate, String baseTime) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme("https")
                         .host("apihub.kma.go.kr")
                         .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
                         .queryParam("pageNo", 1)
-                        .queryParam("numOfRows", 1000)
+                        .queryParam("numOfRows", 50)
                         .queryParam("dataType", "JSON")
                         .queryParam("base_date", baseDate)
                         .queryParam("base_time", baseTime)
@@ -119,7 +150,7 @@ public class WeatherApiService {
                         .build())
                 .retrieve()
                 .bodyToMono(String.class)
-                .map(response -> processApiResponse(response, redisKey, baseDate, baseTime));
+                .map(response -> processApiResponse(response, redisKey, baseTime));
     }
 
     /**
@@ -129,26 +160,27 @@ public class WeatherApiService {
      * @param redisKey Redis 키
      * @return WeatherResponse.RainDTO
      */
-    private WeatherResponse.RainDto processApiResponse(String response, String redisKey, String baseDate, String baseTime) {
-        int maxTemp = extractValue(response, "TMX", baseDate, baseTime);
-        int minTemp = extractValue(response, "TMN", baseDate, baseTime);
-        int rainPer = extractValue(response, "POP", baseDate, baseTime);
-        // RainDto 객체 생성
-        WeatherResponse.RainDto rainDto = WeatherConverter.toRainDto(maxTemp, minTemp, rainPer);
+    private WeatherData processApiResponse(String response, String redisKey, String baseTime) {
+        int maxTemp = extractValue(response, "TMX");
+        int minTemp = extractValue(response, "TMN");
+        int rainPer = extractValue(response, "POP");
+        int currentTemp = extractValue(response, "TMP");
+
+        WeatherData weatherData = WeatherConverter.toWeatherData(maxTemp, minTemp, rainPer, currentTemp);
 
         // JSON 직렬화를 위해 ObjectMapper 사용
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            String rainDtoJson = objectMapper.writeValueAsString(rainDto);
+            String weatherDataJson = objectMapper.writeValueAsString(weatherData);
             // Redis에 저장
-            redisUtil.setValues(redisKey, rainDtoJson, Duration.ofHours(4));
+            redisUtil.setValues(redisKey, weatherDataJson, Duration.ofHours(24));
         } catch (JsonProcessingException e) {
             e.printStackTrace();
             throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR); // 예외 처리
         }
 
-        // RainDto 반환
-        return rainDto;
+        // WeatherData 반환
+        return weatherData;
     }
 
     /**
@@ -157,44 +189,115 @@ public class WeatherApiService {
      * @param category 필요한 데이터 카테고리
      * @return 데이터 값
      */
-    private int extractValue(String response, String category, String baseDate, String baseTime) {
+    private int extractValue(String response, String category) {
+        LocalDateTime now = LocalDateTime.now();
+        String hour = now.format(DateTimeFormatter.ofPattern("%02d00"));
+        String date = now.format(DateTimeFormatter.ofPattern("yyyymmdd"));
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(response);
             JsonNode itemsNode = rootNode.path("response").path("body").path("items");
 
             if (itemsNode.isArray()) {
-                // baseTime에 1시간을 더한 값을 계산
-                int baseTimeInt = Integer.parseInt(baseTime);
-                int nextHourTime = baseTimeInt + 100;
-                if (nextHourTime >= 2400) {
-                    nextHourTime -= 2400; // 시간을 24시간 형식으로 맞추기 위해 2400을 빼줌
-                }
-                String nextHourTimeStr = String.format("%04d", nextHourTime); // 4자리 형식으로 맞추기
-
                 for (JsonNode itemNode : itemsNode) {
-                    String itemCategory = itemNode.path("category").asText();
-                    String itemFcstDate = itemNode.path("fcstDate").asText();
-                    String itemFcstTime = itemNode.path("fcstTime").asText();
-
-                    // 조건에 맞는 데이터 찾기
-                    if (category.equals(itemCategory)
-                            && baseDate.equals(itemFcstDate)
-                            && nextHourTimeStr.equals(itemFcstTime)) {
+                    if (category.equals(itemNode.get("category").asText()) && date.equals(itemNode.get("fcstDate").asText()) && hour.equals(itemNode.get("fcstTime").asText())) {
+                        System.out.println(itemNode.path("fcstValue").asInt());
                         return itemNode.path("fcstValue").asInt();
                     }
                 }
 
-                // 매칭된 시/군/구 이름이 없는 경우 예외 처리
-                System.out.println("매칭된 데이터가 없습니다: " + category + ", " + baseDate + ", " + baseTime);
-                throw new GlobalException(ErrorStatus.DUST_DATA_NOT_FOUND);
             }
         } catch (Exception e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.DUST_SERVER_ERROR);
+            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
         }
         return 0;
     }
+
+    /**
+     * 어제 기온 api 조회
+     * @param baseTime api 요청 시각
+     * @return 어제 기온 데이터
+     */
+
+    private Mono<Integer> fetchYesterDataFromApi(LonXLatY xy, String yesterDate, String baseTime) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme("https")
+                        .host("apihub.kma.go.kr")
+                        .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
+                        .queryParam("pageNo", 1)
+                        .queryParam("numOfRows", 50)
+                        .queryParam("dataType", "JSON")
+                        .queryParam("base_date", yesterDate)
+                        .queryParam("base_time", baseTime)
+                        .queryParam("nx", xy.x)
+                        .queryParam("ny", xy.y)
+                        .queryParam("authKey", WEATHER_API_KEY)
+                        .queryParam("returnType", "json")
+                        .build())
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(response -> extractValue(response, "TMP"));
+    }
+
+    private String getBaseTime() {
+        LocalDateTime now = LocalDateTime.now();
+        int hour = now.getHour();
+
+        if (hour >= 0 && hour <= 2) {
+            return "2300";
+        }
+
+        int baseHour = hour - hour % 3 -1;
+        return String.format("%02d00", baseHour);
+    }
+
+    private String getBaseDate() {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (now.getHour() >= 0 && now.getHour() <= 2) {
+            return now.minusDays(1).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        }
+
+        return now.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    }
+    private String getYesterDate(){
+        LocalDateTime now = LocalDateTime.now();
+
+        if (now.getHour() >= 0 && now.getHour() <= 2) {
+            return now.minusDays(2).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        }
+
+        return now.minusDays(1).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    }
+    private String generateRedisKey(int mode, LonXLatY xy) {
+        String timeKey = "";
+        // 모드에 따라 날짜 설정
+        if (mode == 1) {
+            timeKey = LocalDateTime.now().minusDays(1).format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH"));
+        } else {
+            timeKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH"));
+        }
+
+        return "weatherInfo:" + xy + ":" + timeKey;
+    }
+    public Mono<Void> saveWeatherDataToRedis(WeatherData weatherData, String redisKey, ReactiveRedisTemplate<String, String> redisTemplate) {
+        try {
+            // WeatherData 객체를 JSON으로 직렬화
+            ObjectMapper objectMapper = new ObjectMapper();
+            String weatherDataJson = objectMapper.writeValueAsString(weatherData);
+
+            // Redis에 저장
+            ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+            return valueOperations.set(redisKey, weatherDataJson).then();  // 저장 후 Mono<Void> 반환
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+}
 //
 //    public WeatherData fetchToday(double x, double y, String baseDate) {
 //
@@ -331,28 +434,7 @@ public class WeatherApiService {
 //        return yesterdayTemp;
 //    }
 //
-    private String getTodayBaseTime() {
-        LocalDateTime now = LocalDateTime.now();
-        int hour = now.getHour();
-        int minute = now.getMinute();
 
-        // 10분 이전인 경우 1시간 전으로 설정
-        if (minute < 10) {
-            hour -= 1;
-            if (hour < 0) {
-                hour = 23;
-            }
-        }
-
-        // 현재 시간을 3으로 나눈 나머지가 2가 되도록 맞추기
-        int baseHour = hour;
-
-        if (hour % 3 != 2) {
-            baseHour = hour - hour % 3 -1;
-        }
-
-        return String.format("%02d00", baseHour);
-    }
 //
 //    private String getNowBaseTime() {
 //        LocalDateTime now = LocalDateTime.now();
