@@ -1,5 +1,6 @@
 package com.example.goready.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 @Getter
@@ -8,7 +9,6 @@ import lombok.*;
 @Data
 @AllArgsConstructor
 public class WeatherData {
-
     private int maxTemp;
     private int minTemp;
     private int rainPer;

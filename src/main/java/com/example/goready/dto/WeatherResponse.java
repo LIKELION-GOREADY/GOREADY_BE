@@ -9,7 +9,7 @@ public class WeatherResponse {
     @Builder
     @Data
     @AllArgsConstructor
-    public class WeatherDto {
+    public static class WeatherDto {
         private int highTemp;
         private int lowTemp;
         private int rainPer;

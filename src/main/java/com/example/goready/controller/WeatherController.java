@@ -14,19 +14,22 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/weather")
 @RequiredArgsConstructor
 public class WeatherController {
 
     private final WeatherService weatherService;
 
     @GetMapping
-    public Mono<ResponseEntity<ApiResponse<WeatherResponse.WeatherDto>>> getWeather(
-            @RequestParam(name = "lat") double lat,
-            @RequestParam(name = "lon") double lon
+    public ResponseEntity<ApiResponse<WeatherResponse.WeatherDto>> getWeather(
+            @RequestParam(name = "lon") double lon,
+            @RequestParam(name = "lat") double lat
     ) {
-        return weatherService.getWeather(lat, lon)
-                .map(weatherDto -> ApiResponse.success(SuccessStatus.SUCCESS_GET_WEATHER, weatherDto));
+        // WeatherService에서 날씨 정보 조회
+        WeatherResponse.WeatherDto weatherDto = weatherService.getWeather(lon, lat);
+
+        // ApiResponse 객체로 성공 응답 생성
+        return ApiResponse.success(SuccessStatus.SUCCESS_GET_WEATHER, weatherDto);
     }
 
 
