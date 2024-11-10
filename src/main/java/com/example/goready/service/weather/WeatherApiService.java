@@ -46,7 +46,10 @@ public class WeatherApiService {
         String yesterDate = getYesterDate();
 
         LonXLatY xy = gridUtils.convertGRID_GPS(lon, lat);
-        System.out.println(xy.x);
+        if (xy.x == 0 && xy.y == 0) {
+            System.out.println("Error: Invalid location coordinates. x: " + xy.x + ", y: " + xy.y);
+            throw new GlobalException(ErrorStatus.LOCATION_BAD_REQUEST);
+        } // 위도 경도 잘못 요청
 
         String redisKey = generateRedisKey(0, xy); // 오늘 날짜 rediskey
         String yesterdayRedisKey = generateRedisKey(1, xy); // 어제 날짜 rediskey
