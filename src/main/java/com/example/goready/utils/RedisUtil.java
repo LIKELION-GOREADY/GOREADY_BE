@@ -41,4 +41,6 @@ public class RedisUtil {
     public boolean checkExistsValue(String value) {
         return !value.equals("false");
     }
+
+
 }
