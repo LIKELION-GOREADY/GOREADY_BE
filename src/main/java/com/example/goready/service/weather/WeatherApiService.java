@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -21,6 +22,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WeatherApiService {
@@ -362,7 +364,7 @@ public class WeatherApiService {
             timeKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH"));
         }
 
-        return "weatherInfo:" + xy + ":" + timeKey;
+        return "weatherInfo:" + "X" + xy.x + "Y" + xy.y + ":" + timeKey;
     }
 
     /**
@@ -376,6 +378,8 @@ public class WeatherApiService {
             ObjectMapper objectMapper = new ObjectMapper();
             String weatherDataJson = objectMapper.writeValueAsString(weatherData);
             redisUtil.setValues(redisKey, weatherDataJson, duration);
+            log.info("Saving weather data to Redis with key: {}", redisKey);
+
         } catch (JsonProcessingException e) {
             e.printStackTrace();
             throw new GlobalException(ErrorStatus.WEATHER_CACHE_ERROR);
