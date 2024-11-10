@@ -11,9 +11,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -83,7 +85,7 @@ public class WeatherApiService {
             return weatherData;
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
+            throw new GlobalException(ErrorStatus.WEATHER_CACHE_ERROR);
         }
 
     }
@@ -95,14 +97,13 @@ public class WeatherApiService {
      */
     private Integer getyesterDataFromCache(String cachedYesterdayData) {
         try {
-            // JSON 문자열을 JsonNode로 변환하여 yesterdayTemp 필드만 가져오기
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode jsonNode = objectMapper.readTree(cachedYesterdayData);
-            int yesterdayTemp = jsonNode.get("currentTemp").asInt();  // yesterdayTemp 필드 추출
+            int yesterdayTemp = jsonNode.get("currentTemp").asInt();  // 어제의 currentTemp = 오늘의 yesterdayTemp
             return yesterdayTemp;
         } catch (Exception e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);  // 에러 처리
+            throw new GlobalException(ErrorStatus.WEATHER_CACHE_ERROR);
         }
     }
 
@@ -115,25 +116,36 @@ public class WeatherApiService {
      */
     private WeatherData fetchWeatherDataFromApi(LonXLatY xy, String redisKey, String baseDate) {
         String baseTime = getBaseTime(false);
-        String response = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .scheme("https")
-                        .host("apihub.kma.go.kr")
-                        .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
-                        .queryParam("pageNo", 1)
-                        .queryParam("numOfRows", 270)
-                        .queryParam("dataType", "JSON")
-                        .queryParam("base_date", baseDate)
-                        .queryParam("base_time", baseTime)
-                        .queryParam("nx", xy.x)
-                        .queryParam("ny", xy.y)
-                        .queryParam("authKey", WEATHER_API_KEY)
-                        .build())
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+        try {
+            String response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("apihub.kma.go.kr")
+                            .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
+                            .queryParam("pageNo", 1)
+                            .queryParam("numOfRows", 270)
+                            .queryParam("dataType", "JSON")
+                            .queryParam("base_date", baseDate)
+                            .queryParam("base_time", baseTime)
+                            .queryParam("nx", xy.x)
+                            .queryParam("ny", xy.y)
+                            .queryParam("authKey", WEATHER_API_KEY)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
-        return processApiResponse(response, redisKey);
+            return processApiResponse(response, redisKey);
+
+        } catch (WebClientResponseException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new GlobalException(ErrorStatus.WEATHER_API_KEY_ERROR);
+            } else {
+                throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
+            }
+        } catch (Exception e) {
+            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
+        }
     }
 
     /**
@@ -159,7 +171,7 @@ public class WeatherApiService {
             redisUtil.setValues(redisKey, weatherDataJson, Duration.ofHours(24));
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR); // 예외 처리
+            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR); // 예외 처리
         }
 
         // WeatherData 반환
@@ -202,7 +214,7 @@ public class WeatherApiService {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
+            throw new GlobalException(ErrorStatus.WEATHER_DATA_NOT_FOUND);
         }
         return 0;
     }
@@ -235,7 +247,7 @@ public class WeatherApiService {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
+            throw new GlobalException(ErrorStatus.WEATHER_DATA_NOT_FOUND);
         }
         return 0;
     }
@@ -249,24 +261,36 @@ public class WeatherApiService {
 
     private Integer fetchYesterDataFromApi(LonXLatY xy, String yesterDate) {
         String baseTime = getBaseTime(true);
-        String response = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .scheme("https")
-                        .host("apihub.kma.go.kr")
-                        .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
-                        .queryParam("pageNo", 1)
-                        .queryParam("numOfRows", 40)
-                        .queryParam("dataType", "JSON")
-                        .queryParam("base_date", yesterDate)
-                        .queryParam("base_time", baseTime)
-                        .queryParam("nx", xy.x)
-                        .queryParam("ny", xy.y)
-                        .queryParam("authKey", WEATHER_API_KEY)
-                        .build())
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
-        return extractValue(response, "TMP", true);
+        try {
+            String response = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("apihub.kma.go.kr")
+                            .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
+                            .queryParam("pageNo", 1)
+                            .queryParam("numOfRows", 40)
+                            .queryParam("dataType", "JSON")
+                            .queryParam("base_date", yesterDate)
+                            .queryParam("base_time", baseTime)
+                            .queryParam("nx", xy.x)
+                            .queryParam("ny", xy.y)
+                            .queryParam("authKey", WEATHER_API_KEY)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            return extractValue(response, "TMP", true);
+
+        } catch (WebClientResponseException e) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new GlobalException(ErrorStatus.WEATHER_API_KEY_ERROR);
+            } else {
+                throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
+            }
+        } catch (Exception e) {
+            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
+        }
     }
 
     /**
@@ -354,7 +378,7 @@ public class WeatherApiService {
             redisUtil.setValues(redisKey, weatherDataJson, duration);
         } catch (JsonProcessingException e) {
             e.printStackTrace();
-            throw new GlobalException(ErrorStatus.INTERNAL_SERVER_ERROR);
+            throw new GlobalException(ErrorStatus.WEATHER_CACHE_ERROR);
         }
     }
 
