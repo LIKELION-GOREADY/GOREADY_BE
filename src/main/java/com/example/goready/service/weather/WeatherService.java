@@ -1,5 +1,6 @@
 package com.example.goready.service.weather;
 
+import com.example.goready.converter.WeatherConverter;
 import com.example.goready.dto.WeatherData;
 import com.example.goready.dto.WeatherResponse;
 import com.example.goready.utils.AddressUtil;
@@ -31,15 +32,6 @@ public class WeatherService {
             status = "same";
         }
 
-        // 4. WeatherDto 빌드하여 반환
-        return WeatherResponse.WeatherDto.builder()
-                .highTemp(weatherData.getMaxTemp())
-                .lowTemp(weatherData.getMinTemp())
-                .rainPer(weatherData.getRainPer())
-                .status(status)
-                .diffTemp(diffTemp)
-                .currentTemp(weatherData.getCurrentTemp())
-                .isUmbrella(isUmbrella)
-                .build();
+        return WeatherConverter.toWeatherDto(weatherData, status, diffTemp, isUmbrella);
     }
 }
