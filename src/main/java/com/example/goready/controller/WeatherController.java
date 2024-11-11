@@ -1,6 +1,5 @@
 package com.example.goready.controller;
 
-import com.example.goready.dto.MaskResponse;
 import com.example.goready.dto.WeatherResponse;
 import com.example.goready.global.response.ApiResponse;
 import com.example.goready.global.response.status.SuccessStatus;
@@ -21,15 +20,12 @@ public class WeatherController {
     private final WeatherService weatherService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<WeatherResponse.WeatherDto>> getWeather(
+    public Mono<ResponseEntity<ApiResponse<WeatherResponse.WeatherDto>>> getWeather(
             @RequestParam(name = "lon") double lon,
             @RequestParam(name = "lat") double lat
     ) {
-        // WeatherService에서 날씨 정보 조회
-        WeatherResponse.WeatherDto weatherDto = weatherService.getWeather(lon, lat);
-
-        // ApiResponse 객체로 성공 응답 생성
-        return ApiResponse.success(SuccessStatus.SUCCESS_GET_WEATHER, weatherDto);
+        return weatherService.getWeather(lon, lat)
+                .map(weatherDto -> ApiResponse.success(SuccessStatus.SUCCESS_GET_WEATHER, weatherDto));
     }
 
 
