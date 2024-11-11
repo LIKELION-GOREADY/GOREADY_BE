@@ -160,7 +160,6 @@ public class WeatherApiService {
      * @return weatherData
      */
     private WeatherData processApiResponse(String response, String redisKey) {
-        System.out.println(response);
         int maxTemp = extractTM(response, "TMX");
         int minTemp = extractTM(response, "TMN");
         int rainPer = extractValue(response, "POP", false);
