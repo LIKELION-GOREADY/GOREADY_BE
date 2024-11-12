@@ -12,11 +12,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -40,7 +40,7 @@ public class WeatherApiService {
      * @param lat 위도 - y
      * @return 날씨 Data
      */
-    public WeatherData getWeatherInfo(double lon, double lat) {
+    public Mono<WeatherData> getWeatherInfo(double lon, double lat) {
 
         String baseDate = getBaseDate();
         String yesterDate = getYesterDate();
@@ -57,23 +57,23 @@ public class WeatherApiService {
         String cachedWeatherData = redisUtil.getValues(redisKey); // 오늘 데이터
         String cachedYesterdayData = redisUtil.getValues(yesterdayRedisKey); // 어제 데이터
 
-        Integer yesterdayTemp;
+        Mono<Integer> yesterdayTempMono;
         if (redisUtil.checkExistsValue(cachedWeatherData)) {
             // 오늘 캐시된 데이터가 있으면 바로 반환
-            return createWeatherDtoFromCache(cachedWeatherData);
+            return Mono.just(createWeatherDtoFromCache(cachedWeatherData));
         } else if (redisUtil.checkExistsValue(cachedYesterdayData)) {
             // 어제 캐시된 데이터가 있으면 해당 데이터의 currentTemp를 yesterdayTemp로 가져옴
-            yesterdayTemp = getyesterDataFromCache(cachedYesterdayData);
+            yesterdayTempMono = Mono.just(getyesterDataFromCache(cachedYesterdayData));
         } else {
             // 모두 없으면 api 호출
-            yesterdayTemp = fetchYesterDataFromApi(xy, yesterDate);
+            yesterdayTempMono = fetchYesterDataFromApi(xy, yesterDate);
         }
-        WeatherData weatherData = fetchWeatherDataFromApi(xy, redisKey, baseDate);
-        weatherData.setYesterdayTemp(yesterdayTemp);
-
-        saveWeatherDataToRedis(redisKey, weatherData, Duration.ofDays(1));
-
-        return weatherData;
+        Mono<WeatherData> weatherDataMono = fetchWeatherDataFromApi(xy, redisKey, baseDate);
+        // 두 비동기 요청을 병렬로 실행하여 결과 병합 및 Redis에 저장
+        return Mono.zip(yesterdayTempMono, weatherDataMono, (yesterdayTemp, weatherData) -> {
+            weatherData.setYesterdayTemp(yesterdayTemp);
+            return weatherData;
+        }).doOnNext(weatherData -> saveWeatherDataToRedis(redisKey, weatherData, Duration.ofDays(1)));
     }
 
     /**
@@ -119,38 +119,27 @@ public class WeatherApiService {
      * @param baseDate 오늘 날짜
      * @return weatherData
      */
-    private WeatherData fetchWeatherDataFromApi(LonXLatY xy, String redisKey, String baseDate) {
+    private Mono<WeatherData> fetchWeatherDataFromApi(LonXLatY xy, String redisKey, String baseDate) {
         String baseTime = getBaseTime(false);
-        try {
-            String response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .scheme("https")
-                            .host("apihub.kma.go.kr")
-                            .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
-                            .queryParam("pageNo", 1)
-                            .queryParam("numOfRows", 270)
-                            .queryParam("dataType", "JSON")
-                            .queryParam("base_date", baseDate)
-                            .queryParam("base_time", baseTime)
-                            .queryParam("nx", xy.x)
-                            .queryParam("ny", xy.y)
-                            .queryParam("authKey", WEATHER_API_KEY)
-                            .build())
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-
-            return processApiResponse(response, redisKey);
-
-        } catch (WebClientResponseException e) {
-            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                throw new GlobalException(ErrorStatus.WEATHER_API_KEY_ERROR);
-            } else {
-                throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
-            }
-        } catch (Exception e) {
-            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
-        }
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme("https")
+                        .host("apihub.kma.go.kr")
+                        .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
+                        .queryParam("pageNo", 1)
+                        .queryParam("numOfRows", 270)
+                        .queryParam("dataType", "JSON")
+                        .queryParam("base_date", baseDate)
+                        .queryParam("base_time", baseTime)
+                        .queryParam("nx", xy.x)
+                        .queryParam("ny", xy.y)
+                        .queryParam("authKey", WEATHER_API_KEY)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::handleClientError)
+                .onStatus(HttpStatusCode::is5xxServerError, this::handleServerError)
+                .bodyToMono(String.class)
+                .map(response -> processApiResponse(response, redisKey));
     }
 
     /**
@@ -166,19 +155,6 @@ public class WeatherApiService {
         int currentTemp = extractValue(response, "TMP", false);
 
         WeatherData weatherData = WeatherConverter.toWeatherData(maxTemp, minTemp, rainPer, currentTemp);
-
-        // JSON 직렬화를 위해 ObjectMapper 사용
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            String weatherDataJson = objectMapper.writeValueAsString(weatherData);
-            // Redis에 저장
-            redisUtil.setValues(redisKey, weatherDataJson, Duration.ofHours(24));
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR); // 예외 처리
-        }
-
-        // WeatherData 반환
         return weatherData;
     }
 
@@ -263,38 +239,50 @@ public class WeatherApiService {
      * @return 어제 기온 데이터
      */
 
-    private Integer fetchYesterDataFromApi(LonXLatY xy, String yesterDate) {
+    private Mono<Integer> fetchYesterDataFromApi(LonXLatY xy, String yesterDate) {
         String baseTime = getBaseTime(true);
-        try {
-            String response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .scheme("https")
-                            .host("apihub.kma.go.kr")
-                            .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
-                            .queryParam("pageNo", 1)
-                            .queryParam("numOfRows", 40)
-                            .queryParam("dataType", "JSON")
-                            .queryParam("base_date", yesterDate)
-                            .queryParam("base_time", baseTime)
-                            .queryParam("nx", xy.x)
-                            .queryParam("ny", xy.y)
-                            .queryParam("authKey", WEATHER_API_KEY)
-                            .build())
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme("https")
+                        .host("apihub.kma.go.kr")
+                        .path("/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst")
+                        .queryParam("pageNo", 1)
+                        .queryParam("numOfRows", 40)
+                        .queryParam("dataType", "JSON")
+                        .queryParam("base_date", yesterDate)
+                        .queryParam("base_time", baseTime)
+                        .queryParam("nx", xy.x)
+                        .queryParam("ny", xy.y)
+                        .queryParam("authKey", WEATHER_API_KEY)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::handleClientError)
+                .onStatus(HttpStatusCode::is5xxServerError, this::handleServerError)
+                .bodyToMono(String.class)
+                .map(response -> extractValue(response, "TMP", true));
 
-            return extractValue(response, "TMP", true);
+    }
 
-        } catch (WebClientResponseException e) {
-            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                throw new GlobalException(ErrorStatus.WEATHER_API_KEY_ERROR);
-            } else {
-                throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
-            }
-        } catch (Exception e) {
-            throw new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR);
-        }
+    /**
+     * 4xx 클라이언트 오류를 처리합니다.
+     * @param clientResponse 클라이언트 응답
+     * @return 커스텀 예외와 함께 Mono 오류 반환
+     */
+    private Mono<GlobalException> handleClientError(org.springframework.web.reactive.function.client.ClientResponse clientResponse) {
+        System.out.println("4xx error occurred: " + clientResponse.statusCode());
+        return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new GlobalException(ErrorStatus.WEATHER_CLIENT_ERROR)));
+    }
+
+    /**
+     * 5xx 서버 오류를 처리합니다.
+     * @param clientResponse 서버 응답
+     * @return 커스텀 예외와 함께 Mono 오류 반환
+     */
+    private Mono<GlobalException> handleServerError(org.springframework.web.reactive.function.client.ClientResponse clientResponse) {
+        System.out.println("5xx error occurred: " + clientResponse.statusCode());
+        return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new GlobalException(ErrorStatus.WEATHER_SERVER_ERROR)));
     }
 
     /**
