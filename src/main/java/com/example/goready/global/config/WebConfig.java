@@ -32,8 +32,6 @@ public class WebConfig {
 
         config.setAllowCredentials(true); // 쿠키 전송을 허용
         config.setAllowedOrigins(Arrays.asList(
-                "http://localhost:3000",
-                "http://localhost:5173",
                 "https://goready.site",
                 "https://www.goready.site",
                 "https://goready.vercel.app"
