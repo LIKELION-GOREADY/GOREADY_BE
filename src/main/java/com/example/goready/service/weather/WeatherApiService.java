@@ -70,10 +70,13 @@ public class WeatherApiService {
         }
         Mono<WeatherData> weatherDataMono = fetchWeatherDataFromApi(xy, redisKey, baseDate);
         // 두 비동기 요청을 병렬로 실행하여 결과 병합 및 Redis에 저장
-        return Mono.zip(yesterdayTempMono, weatherDataMono, (yesterdayTemp, weatherData) -> {
-            weatherData.setYesterdayTemp(yesterdayTemp);
+        return yesterdayTempMono.zipWith(weatherDataMono, (yesterdayTemp, weatherData) -> {
+            weatherData.setYesterdayTemp(yesterdayTemp); // `yesterdayTemp`를 `weatherData`에 설정
             return weatherData;
-        }).doOnNext(weatherData -> saveWeatherDataToRedis(redisKey, weatherData, Duration.ofDays(1)));
+        }).doOnNext(weatherData -> {
+            // 완성된 `weatherData`를 Redis에 저장
+            saveWeatherDataToRedis(redisKey, weatherData, Duration.ofDays(1));
+        });
     }
 
     /**
