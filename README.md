@@ -1,5 +1,14 @@
 # 외출준비 GoReady Backend Repository
 
+## Backend Member
+|      오세연       |          이소라        |                                                                                                   
+| :------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------: | 
+|   <img src="https://avatars.githubusercontent.com/oosedus?v=4" width=90px alt="오세연"/>       |   <img src="https://avatars.githubusercontent.com/leeesoraaa?v=4" width=90px alt="이소라"/>                       |
+|   [@oosedus](https://github.com/oosedus)   |    [@leeesoraaa](https://github.com/leeesoraaa)  | 
+| 서울과학기술대학교 | 서울과학기술대학교 | 
+
+<br><br>
+
 ## 📌 Convention
 
 **commit convention** <br>
