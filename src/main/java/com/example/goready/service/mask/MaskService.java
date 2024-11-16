@@ -160,9 +160,15 @@ public class MaskService {
                         return itemNode.path("pm10Value").asInt();
                     }
                 }
-                // 매칭된 시/군/구 이름이 없는 경우 예외 처리
-                System.out.println("매칭된 시/군/구 이름이 없습니다: " + cityName);
-                throw new GlobalException(ErrorStatus.DUST_DATA_NOT_FOUND);
+                // 매칭된 시/군/구 이름이 없는 경우 첫 번째 항목의 pm10Value 반환
+                if (!itemsNode.isEmpty()) {
+                    System.out.println("매칭된 시/군/구 이름이 없습니다. 첫 번째 항목의 pm10Value를 반환합니다.");
+                    return itemsNode.get(0).path("pm10Value").asInt();
+                } else {
+                    // itemsNode가 비어 있는 경우
+                    System.out.println("데이터가 비어 있습니다.");
+                    throw new GlobalException(ErrorStatus.DUST_DATA_NOT_FOUND);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
